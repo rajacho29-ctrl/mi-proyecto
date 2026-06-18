@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nivel Socioeconómico - Ecuador (Provincias)</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  body { margin: 0; padding: 0; }
+  #map { width: 100vw; height: 100vh; }
+  .info { padding: 8px 12px; font: 14px/1.5 Arial; background: white; border-radius: 5px; box-shadow: 0 0 10px rgba(0,0,0,0.2); }
+  .legend { line-height: 22px; color: #333; }
+  .legend i { width: 18px; height: 18px; float: left; margin-right: 8px; opacity: 0.8; }
+  .leaflet-popup-content { font-size: 13px; }
+  .leaflet-popup-content h3 { margin: 0 0 6px; }
+  .leaflet-popup-content table { width: 100%; border-collapse: collapse; }
+  .leaflet-popup-content td { padding: 2px 4px; }
+  .leaflet-popup-content td:last-child { text-align: right; font-weight: bold; }
+  .nse-bar { height: 12px; border-radius: 3px; margin-top: 6px; }
+  h1 { position: absolute; top: 20px; left: 60px; z-index: 1000; background: rgba(255,255,255,0.9); padding: 10px 18px; border-radius: 6px; font: 600 18px Arial; margin: 0; box-shadow: 0 0 8px rgba(0,0,0,0.15); }
+  .fuente { position: absolute; bottom: 20px; left: 60px; z-index: 1000; background: rgba(255,255,255,0.85); padding: 6px 12px; border-radius: 4px; font: 11px Arial; box-shadow: 0 0 6px rgba(0,0,0,0.1); }
+</style>
+</head>
+<body>
+<h1>Nivel Socioeconómico por Provincia - Ecuador</h1>
+<div id="map"></div>
+<div class="fuente">Fuente: INEC - Censo 2010 (NBI). Clasificación NSE según metodología INEC 2011.</div>
+
+<script>
+const map = L.map('map').setView([-1.5, -78.5], 7);
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>'
+}).addTo(map);
+
+const NSE_COLORS = {
+  'A': '#1a9850',
+  'B': '#66bd63',
+  'C+': '#fee08b',
+  'C-': '#f46d43',
+  'D': '#d73027'
+};
+
+const NSE_ORDER = ['A', 'B', 'C+', 'C-', 'D'];
+
+function getNSE(pobreza_pct) {
+  if (pobreza_pct < 15) return 'A';
+  if (pobreza_pct < 28) return 'B';
+  if (pobreza_pct < 42) return 'C+';
+  if (pobreza_pct < 55) return 'C-';
+  return 'D';
+}
+
+function getLabel(pobreza_pct) {
+  return `${pobreza_pct.toFixed(1)}% pobreza NBI`;
+}
+
+const GEOJSON_URL = 'https://raw.githubusercontent.com/jpmarindiaz/geo-collection/master/ecu/ecuador.geojson';
+
+fetch(GEOJSON_URL)
+  .then(r => r.json())
+  .then(data => {
+    const geoLayer = L.geoJSON(data, {
+      style: function(feature) {
+        const p = feature.properties;
+        const pob = p.pobres_nbi;
+        const tot = p.pob_tot;
+        const pobreza_pct = tot > 0 ? (pob / tot) * 100 : 0;
+        const nse = getNSE(pobreza_pct);
+        return {
+          fillColor: NSE_COLORS[nse],
+          weight: 1.5,
+          opacity: 1,
+          color: '#666',
+          fillOpacity: 0.75
+        };
+      },
+      onEachFeature: function(feature, layer) {
+        const p = feature.properties;
+        const pob = p.pobres_nbi;
+        const noPob = p.no_pobres;
+        const tot = p.pob_tot;
+        const pobreza_pct = tot > 0 ? (pob / tot) * 100 : 0;
+        const nse = getNSE(pobreza_pct);
+
+        const popupContent = `
+          <h3 style="color:${NSE_COLORS[nse]}">${p.nombre}</h3>
+          <table>
+            <tr><td>NSE:</td><td style="color:${NSE_COLORS[nse]}">${nse}</td></tr>
+            <tr><td>Pobreza NBI:</td><td>${pobreza_pct.toFixed(1)}%</td></tr>
+            <tr><td>Población total:</td><td>${tot.toLocaleString()}</td></tr>
+            <tr><td>Pobres NBI:</td><td>${pob.toLocaleString()}</td></tr>
+            <tr><td>No pobres:</td><td>${noPob.toLocaleString()}</td></tr>
+            <tr><td>Analfabetismo:</td><td>${p.analfabeti}%</td></tr>
+            <tr><td>Educación promedio:</td><td>${p.promedio_e} años</td></tr>
+            <tr><td>Densidad:</td><td>${p.densidad} hab/km²</td></tr>
+          </table>
+          <div class="nse-bar" style="background: linear-gradient(to right, ${NSE_COLORS['A']} 0%, ${NSE_COLORS['A']} 15%, ${NSE_COLORS['B']} 15%, ${NSE_COLORS['B']} 28%, ${NSE_COLORS['C+']} 28%, ${NSE_COLORS['C+']} 42%, ${NSE_COLORS['C-']} 42%, ${NSE_COLORS['C-']} 55%, ${NSE_COLORS['D']} 55%, ${NSE_COLORS['D']} 100%); position:relative;">
+            <div style="position:absolute; left:${Math.min(pobreza_pct, 100)}%; top:-4px; width:4px; height:20px; background:#333; border-radius:2px;"></div>
+          </div>
+          <div style="font-size:10px; color:#888; margin-top:2px;">▲ ${p.nombre} está en NSE <b>${nse}</b></div>
+        `;
+
+        layer.bindPopup(popupContent);
+        layer.on('mouseover', function(e) {
+          this.setStyle({ weight: 3, color: '#222', fillOpacity: 0.9 });
+          this.bringToFront();
+        });
+        layer.on('mouseout', function(e) {
+          geoLayer.resetStyle(this);
+        });
+      }
+    }).addTo(map);
+
+    // Legend
+    const legend = L.control({ position: 'bottomright' });
+    legend.onAdd = function() {
+      const div = L.DomUtil.create('div', 'info legend');
+      div.innerHTML = '<b>Nivel Socioeconómico</b><br>';
+      NSE_ORDER.forEach(nse => {
+        div.innerHTML += `<i style="background:${NSE_COLORS[nse]}"></i> ${nse}<br>`;
+      });
+      div.innerHTML += '<hr style="margin:4px 0"><div style="font-size:11px">Basado en % pobreza NBI<br>(Necesidades Básicas Insatisfechas)</div>';
+      return div;
+    };
+    legend.addTo(map);
+
+    map.fitBounds(geoLayer.getBounds().pad(0.05));
+  })
+  .catch(err => {
+    document.getElementById('map').innerHTML = '<div style="padding:40px; text-align:center; font:18px Arial;">Error al cargar datos: ' + err.message + '</div>';
+  });
+</script>
+</body>
+</html>
